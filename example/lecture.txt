@@ -1,8 +1,10 @@
 The best lecture ever
 1. A terrific introduction (1m)
-2. Our first topic (5h6m20s+)
-3. Our second, more complicated topic
+2. Our first topic (6m20s+)
+3. Our second topic
   1. With subsections (2m30s+)
+    1. And nested subsections (1m)
   2. This one is quite long (10m-)
+    1. This is short (30s)
 4. Almost done (15m-)
 5. Wrap up (2m-)
