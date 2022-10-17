@@ -7,25 +7,35 @@
 #include <stack>
 #include <tuple>
 
+using indentation = int;
+
+void rtrim(std::string& s) {
+  s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+    return !std::isspace(ch);
+  }).base(), s.end());
+}
+
 struct Session {
+  struct Section {
+    Section() : seconds(0), plus(true), minus(true) {}
+
+    std::string qualifiedName() const {
+      return prefix.empty() ? title : prefix + " >> " + title;
+    }
+
+    std::string prefix;
+    std::string title;
+    int seconds;
+    bool plus;
+    bool minus;
+  };
+
   struct Content {
-    struct Section {
-      std::string qualifiedName() const {
-        return prefix.empty() ? title : prefix + "::" + title;
-      }
-
-      std::string prefix = "";
-      std::string title = "";
-      int seconds = 0;
-      bool plus = true;
-      bool minus = true;
-    };
-
-    std::string title = "";
+    std::string title;
     std::vector<Section> sections;
   };
 
-  Session(const std::string& filename) {
+  Session(const std::string& filename) : total_elapsed_time(0), section_elapsed_time(0), paused(false) {
     std::ifstream in(filename);
 
     if (!in) {
@@ -40,20 +50,22 @@ struct Session {
     std::getline(in, line);
     content.title = line;
 
-    std::stack<std::tuple<Content::Section, int>> section_stack;
+    std::stack<std::tuple<Section, indentation>> section_stack;
+
     while (std::getline(in, line)) {
       if (!std::regex_match(line, matches, pattern)) {
         std::cerr << '"' << line << '"' << " does not follow the expected structure" << std::endl;
         std::exit(EXIT_FAILURE);
       }
 
-      Content::Section section;
+      Section section;
 
       section.title = matches[3];
+      rtrim(section.title);
 
-      const std::string h(matches[4].str());
-      const std::string m(matches[5].str());
-      const std::string s(matches[6].str());
+      const std::string h(matches[4]);
+      const std::string m(matches[5]);
+      const std::string s(matches[6]);
 
       try {
         section.seconds += h.size() ? std::stoi(h.substr(0, h.size() - 1)) * 360 : 0;
@@ -67,7 +79,7 @@ struct Session {
       section.plus = matches[7].length();
       section.minus = matches[8].length();
 
-      const int indentation = matches[1].str().size();
+      const int indentation = matches[1].length();
 
       if (section_stack.empty()) {
         section_stack.emplace(section, indentation);
@@ -77,8 +89,8 @@ struct Session {
 
       auto [top_section, top_indentation] = section_stack.top();
       if (indentation == top_indentation) {
-        section_stack.pop();
         section.prefix = top_section.prefix;
+        section_stack.pop();
         section_stack.emplace(section, indentation);
       } else if (indentation > top_indentation) {
         section.prefix = top_section.qualifiedName();
@@ -86,14 +98,15 @@ struct Session {
       } else {
         while (indentation < top_indentation) {
           section_stack.pop();
-          top_indentation = std::get<1>(section_stack.top());
+          std::tie(top_section, top_indentation) = section_stack.top();
         }
-        top_section = std::get<0>(section_stack.top());
         section.prefix = top_section.prefix;
         section_stack.emplace(section, indentation);
       }
 
-      content.sections.push_back(section);
+      if (section.seconds) {
+        content.sections.push_back(section);
+      }
     }
   }
 
@@ -101,13 +114,13 @@ struct Session {
   }
 
   Content content;
-  std::vector<int> finished_sections;
-  int total_elapsed_time = 0;
-  int section_elapsed_time = 0;
-  bool paused = false;
+  std::vector<Section> finished_sections;
+  int total_elapsed_time;
+  int section_elapsed_time;
+  bool paused;
 };
 
-std::ostream& operator<<(std::ostream& os, const Session::Content::Section& section) {
+std::ostream& operator<<(std::ostream& os, const Session::Section& section) {
   if (section.prefix.empty()) {
     os << section.title << " ";
   } else {
