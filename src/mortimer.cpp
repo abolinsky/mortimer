@@ -5,10 +5,11 @@
 #include <cstdlib>
 #include <stack>
 #include <tuple>
+#include <chrono>
+#include <thread>
 
 int main(int argc, char* argv[]) {
   Session session(handleInput(argc, argv));
-  std::cout << session << std::endl;
   session.run(); 
 }
 
@@ -26,7 +27,7 @@ void printUsage() {
   std::cerr << "usage: mortimer <file>" << std::endl;
 }
 
-Session::Session(const std::string& filename) : _total_elapsed_time(0), _section_elapsed_time(0), _running(false), _paused(false) {
+Session::Session(const std::string& filename) : _running(false), _paused(false) {
   std::ifstream in(filename);
 
   if (!in) {
@@ -102,21 +103,49 @@ Session::Session(const std::string& filename) : _total_elapsed_time(0), _section
 }
 
 void Session::run() {
+  _section_start = std::chrono::steady_clock::now();
   _running = true;
+  _paused = false;
+  std::cout << _content.title << std::endl;
   while (_running) {
-    handleTime();
     handleKeys();
+    handleTime();
     handleOutput();
   }
-}
-
-void Session::handleTime() {
 }
 
 void Session::handleKeys() {
 }
 
+void Session::handleTime() {
+  if (_paused) {
+    return;
+  }
+
+  if (_content.sections.empty()) {
+    _running = false;
+    return;
+  }
+
+  const auto time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _section_start).count();
+  if (time >= _content.sections.front().seconds) {
+    _finished_sections.push_back(_content.sections.front());
+    _content.sections.pop_front();
+    _section_start = std::chrono::steady_clock::now();
+  }
+}
+
 void Session::handleOutput() {
+  if (!_running) {
+    std::cout << "end" << std::endl;  
+    return;
+  }
+  std::string out = _content.sections.front().qualifiedName();
+  std::cout << out << std::flush;
+  std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_DURATION_MS));
+  for (auto i = 0; i < out.length(); ++i) {
+    std::cout << " \b\b" << std::flush;
+  }
 }
 
 bool Session::running() const {
