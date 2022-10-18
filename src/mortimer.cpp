@@ -40,7 +40,7 @@ Session::Session(const std::string& filename) : _pause_duration(0), _paused(true
   
   std::string line;
   std::getline(in, line);
-  _content.title = line;
+  _title = line;
 
   std::stack<std::tuple<Section, indentation>> section_stack;
 
@@ -75,7 +75,7 @@ Session::Session(const std::string& filename) : _pause_duration(0), _paused(true
 
     if (section_stack.empty()) {
       section_stack.emplace(section, indentation);
-      _content.sections.push_back(section);
+      _sections.push_back(section);
       continue;
     }
 
@@ -97,18 +97,20 @@ Session::Session(const std::string& filename) : _pause_duration(0), _paused(true
     }
 
     if (section.seconds) {
-      _content.sections.push_back(section);
+      _sections.push_back(section);
     }
   }
+
+  _current_section = _sections.begin();
 }
 
 void Session::run() {
   _running = true;
-  std::cout << _content.title << std::endl;
+  std::cout << _title << std::endl;
   while (_running) {
+    handleOutput();
     handleKeys();
     handleTime();
-    handleOutput();
   }
 }
 
@@ -119,7 +121,7 @@ void Session::handleOutput() const {
   }
 
   static std::string previous_title;
-  const std::string& current_title = _content.sections.front().qualifiedName();
+  const std::string& current_title = _current_section->qualifiedName();
   if (current_title != previous_title) {
     for (auto i = 0; i < previous_title.length(); ++i) {
       std::cout << " \b\b" << std::flush;
@@ -140,7 +142,7 @@ void Session::handleKeys() {
 void Session::handleTime() {
   std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_DURATION_MS));
 
-  if (_content.sections.empty()) {
+  if (_current_section == _sections.end()) {
     _running = false;
     return;
   }
@@ -154,7 +156,7 @@ void Session::handleTime() {
   }
 
   const auto seconds_elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _section_start).count() - _pause_duration;
-  if (seconds_elapsed >= _content.sections.front().seconds) {
+  if (seconds_elapsed >= _current_section->seconds) {
     next();
   }
 }
@@ -174,16 +176,14 @@ void Session::resume() {
 }
 
 void Session::previous() {
-  _content.sections.push_front(_finished_sections.back());
-  _finished_sections.pop_back();
+  --_current_section;
   _section_start = std::chrono::steady_clock::now();
   resume();
   _pause_duration = 0;
 }
 
 void Session::next() {
-  _finished_sections.push_back(_content.sections.front());
-  _content.sections.pop_front();
+  ++_current_section;
   _section_start = std::chrono::steady_clock::now();
   resume();
   _pause_duration = 0;
@@ -200,8 +200,8 @@ std::string Session::Section::qualifiedName() const {
 }
 
 std::ostream& operator<<(std::ostream& os, const Session& session) {
-  os << session._content.title << std::endl;
-  for (auto& section : session._content.sections) {
+  os << session._title << std::endl;
+  for (auto& section : session._sections) {
     os << section; 
   }
   return os;

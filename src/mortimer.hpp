@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include <deque>
+#include <vector>
 #include <string>
 
 using indentation = int;
@@ -22,13 +22,11 @@ class Session {
       std::string prefix;
       std::string title;
       int seconds;
+      int actual_seconds;
+      int recommended_seconds;
+      float weight;
       bool plus;
       bool minus;
-    };
-
-    struct Content {
-      std::string title;
-      std::deque<Section> sections;
     };
 
     void handleOutput() const;
@@ -41,8 +39,9 @@ class Session {
     void next();
     void end();
 
-    Content _content;
-    std::deque<Section> _finished_sections;
+    std::string _title;
+    std::vector<Section> _sections;
+    std::vector<Section>::iterator _current_section;
 
     std::chrono::time_point<std::chrono::steady_clock> _section_start;
     std::chrono::time_point<std::chrono::steady_clock> _pause_start;
