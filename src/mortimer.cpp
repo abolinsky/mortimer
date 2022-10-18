@@ -27,7 +27,7 @@ void printUsage() {
   std::cerr << "usage: mortimer <file>" << std::endl;
 }
 
-Session::Session(const std::string& filename) : _pause_duration(0), _paused(true), _running(false) {
+Session::Session(const std::string& filename) : _pause_duration(0), _paused(false), _running(false) {
   std::ifstream in(filename);
 
   if (!in) {
@@ -106,28 +106,11 @@ Session::Session(const std::string& filename) : _pause_duration(0), _paused(true
 
 void Session::run() {
   _running = true;
-  std::cout << _title << std::endl;
+  std::cout << std::endl << _title << std::endl;
   while (_running) {
-    handleOutput();
     handleKeys();
     handleTime();
-  }
-}
-
-void Session::handleOutput() const {
-  if (!_running) {
-    std::cout << "end" << std::endl;  
-    return;
-  }
-
-  static std::string previous_title;
-  const std::string& current_title = _current_section->qualifiedName();
-  if (current_title != previous_title) {
-    for (auto i = 0; i < previous_title.length(); ++i) {
-      std::cout << " \b\b" << std::flush;
-    }
-    std::cout << current_title << std::flush;
-    previous_title = current_title;
+    handleOutput();
   }
 }
 
@@ -155,10 +138,60 @@ void Session::handleTime() {
     _section_start = std::chrono::steady_clock::now();
   }
 
-  const auto seconds_elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _section_start).count() - _pause_duration;
-  if (seconds_elapsed >= _current_section->seconds) {
+  if (progress() >= 1.0) {
     next();
   }
+
+  if (_current_section == _sections.end()) {
+    _running = false;
+    return;
+  }
+}
+
+void Session::handleOutput() const {
+  if (!_running) {
+    std::cout << std::endl << std::endl << "end" << std::endl;  
+    return;
+  }
+
+  static std::string previous_title;
+  const std::string& current_title = _current_section->qualifiedName();
+  if (current_title != previous_title) {
+    std::cout << std::endl << std::endl << current_title << std::endl;
+    previous_title = current_title;
+  }
+
+  static int previous_progress;
+  const int current_progress = progress() * PROGRESS_BAR_SIZE;
+  const int spaces = PROGRESS_BAR_SIZE - current_progress;
+  const int remaining_seconds = (1.0f - progress()) * _current_section->seconds;
+
+  for (auto i = 0; i < PROGRESS_BAR_SIZE + 10; ++i) {
+    std::cout << " \b\b";
+  }
+
+  std::cout << "[";
+  if (current_progress != previous_progress) {
+    for (auto i = 0; i < current_progress; ++i) {
+      if (i < PROGRESS_BAR_SIZE * 0.75) {
+        std::cout << "\x1B[32m|\033[0m";
+      } else if (i < PROGRESS_BAR_SIZE * 0.90) {
+        std::cout << "\x1B[33m|\033[0m";
+      } else {
+        std::cout << "\x1B[31m|\033[0m";
+      }
+    }
+    for (auto i = 0; i < spaces - 1; ++i) {
+      std::cout << " ";
+    }
+  } else {
+    for (auto i = 0; i < PROGRESS_BAR_SIZE - 1; ++i) {
+      std::cout << " ";
+    }
+  }
+  std::cout << "] ";
+
+  std::cout << remaining_seconds / 60 << "m" << remaining_seconds % 60 << "s " << std::flush;
 }
 
 void Session::pause() {
@@ -170,7 +203,7 @@ void Session::pause() {
 
 void Session::resume() {
   if (!_paused) {
-    _pause_duration += std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _pause_start).count();
+    _pause_duration += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _pause_start);
     _paused = false;
   }
 }
@@ -179,18 +212,23 @@ void Session::previous() {
   --_current_section;
   _section_start = std::chrono::steady_clock::now();
   resume();
-  _pause_duration = 0;
+  _pause_duration = _pause_duration.zero();
 }
 
 void Session::next() {
   ++_current_section;
   _section_start = std::chrono::steady_clock::now();
   resume();
-  _pause_duration = 0;
+  _pause_duration = _pause_duration.zero();
 }
 
 void Session::end() {
   _running = false;
+}
+
+float Session::progress() const {
+  const auto milliseconds_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _section_start - _pause_duration).count();
+  return milliseconds_elapsed / static_cast<float>(_current_section->seconds * 1000);
 }
 
 Session::Section::Section() : seconds(0), plus(true), minus(true) {}

@@ -6,6 +6,7 @@
 
 using indentation = int;
 constexpr int SLEEP_DURATION_MS = 8;
+constexpr int PROGRESS_BAR_SIZE = 100;
 
 class Session {
   public:
@@ -39,13 +40,15 @@ class Session {
     void next();
     void end();
 
+    float progress() const;
+
     std::string _title;
     std::vector<Section> _sections;
     std::vector<Section>::iterator _current_section;
 
     std::chrono::time_point<std::chrono::steady_clock> _section_start;
     std::chrono::time_point<std::chrono::steady_clock> _pause_start;
-    int _pause_duration;
+    std::chrono::duration<int, std::milli>  _pause_duration;
     bool _paused;
     bool _running;
 
