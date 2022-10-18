@@ -12,7 +12,6 @@ class Session {
     Session(const std::string& filename);
 
     void run();
-    bool running() const;
 
   private:
     struct Section {
@@ -32,13 +31,22 @@ class Session {
       std::deque<Section> sections;
     };
 
+    void handleOutput() const;
     void handleKeys();
     void handleTime();
-    void handleOutput();
+
+    void pause();
+    void resume();
+    void previous();
+    void next();
+    void end();
 
     Content _content;
     std::deque<Section> _finished_sections;
+
     std::chrono::time_point<std::chrono::steady_clock> _section_start;
+    std::chrono::time_point<std::chrono::steady_clock> _pause_start;
+    int _pause_duration;
     bool _paused;
     bool _running;
 

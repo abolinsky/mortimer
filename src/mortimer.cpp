@@ -27,7 +27,7 @@ void printUsage() {
   std::cerr << "usage: mortimer <file>" << std::endl;
 }
 
-Session::Session(const std::string& filename) : _running(false), _paused(false) {
+Session::Session(const std::string& filename) : _pause_duration(0), _paused(true), _running(false) {
   std::ifstream in(filename);
 
   if (!in) {
@@ -103,9 +103,7 @@ Session::Session(const std::string& filename) : _running(false), _paused(false) 
 }
 
 void Session::run() {
-  _section_start = std::chrono::steady_clock::now();
   _running = true;
-  _paused = false;
   std::cout << _content.title << std::endl;
   while (_running) {
     handleKeys();
@@ -114,42 +112,85 @@ void Session::run() {
   }
 }
 
+void Session::handleOutput() const {
+  if (!_running) {
+    std::cout << "end" << std::endl;  
+    return;
+  }
+
+  static std::string previous_title;
+  const std::string& current_title = _content.sections.front().qualifiedName();
+  if (current_title != previous_title) {
+    for (auto i = 0; i < previous_title.length(); ++i) {
+      std::cout << " \b\b" << std::flush;
+    }
+    std::cout << current_title << std::flush;
+    previous_title = current_title;
+  }
+}
+
 void Session::handleKeys() {
+  /* TODO: pause() */
+  /* TODO: resume() */
+  /* TODO: previous() */
+  /* TODO: next() */
+  /* TODO: end() */
 }
 
 void Session::handleTime() {
-  if (_paused) {
-    return;
-  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_DURATION_MS));
 
   if (_content.sections.empty()) {
     _running = false;
     return;
   }
 
-  const auto time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _section_start).count();
-  if (time >= _content.sections.front().seconds) {
-    _finished_sections.push_back(_content.sections.front());
-    _content.sections.pop_front();
-    _section_start = std::chrono::steady_clock::now();
-  }
-}
-
-void Session::handleOutput() {
-  if (!_running) {
-    std::cout << "end" << std::endl;  
+  if (_paused) {
     return;
   }
-  std::string out = _content.sections.front().qualifiedName();
-  std::cout << out << std::flush;
-  std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_DURATION_MS));
-  for (auto i = 0; i < out.length(); ++i) {
-    std::cout << " \b\b" << std::flush;
+
+  if (_section_start.time_since_epoch().count() == 0) {
+    _section_start = std::chrono::steady_clock::now();
+  }
+
+  const auto seconds_elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _section_start).count() - _pause_duration;
+  if (seconds_elapsed >= _content.sections.front().seconds) {
+    next();
   }
 }
 
-bool Session::running() const {
-  return _running;
+void Session::pause() {
+  if (!_paused) {
+    _pause_start = std::chrono::steady_clock::now();
+    _paused = true;
+  }
+}
+
+void Session::resume() {
+  if (!_paused) {
+    _pause_duration += std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - _pause_start).count();
+    _paused = false;
+  }
+}
+
+void Session::previous() {
+  _content.sections.push_front(_finished_sections.back());
+  _finished_sections.pop_back();
+  _section_start = std::chrono::steady_clock::now();
+  resume();
+  _pause_duration = 0;
+}
+
+void Session::next() {
+  _finished_sections.push_back(_content.sections.front());
+  _content.sections.pop_front();
+  _section_start = std::chrono::steady_clock::now();
+  resume();
+  _pause_duration = 0;
+}
+
+void Session::end() {
+  _running = false;
 }
 
 Session::Section::Section() : seconds(0), plus(true), minus(true) {}
