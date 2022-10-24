@@ -1,5 +1,7 @@
 #include "mortimer.hpp"
 
+#include <curses.h>
+
 #include <fstream>
 #include <regex>
 #include <cstdlib>
@@ -104,21 +106,52 @@ Session::Session(const std::string& filename) : _pause_duration(0), _paused(fals
 }
 
 void Session::run() {
+  /* Start curses mode */
+  initscr();
+  start_color();
+  raw();
+  noecho();
+  keypad(stdscr, TRUE);
+  init_pair(1, COLOR_GREEN, COLOR_BLACK);
+
   _running = true;
-  std::cout << std::endl << _title << std::endl;
+
+  printw(_title.c_str());
   while (_running) {
     handleKeys();
     handleTime();
     handleOutput();
   }
+
+  /* End curses mode */
+	endwin();
 }
 
 void Session::handleKeys() {
-  /* TODO: pause() */
-  /* TODO: resume() */
-  /* TODO: previous() */
-  /* TODO: next() */
-  /* TODO: end() */
+  /* Wait for user input */
+	int ch = getch();
+
+  switch (ch) {
+    case 100: {
+      next();
+      break;
+    }
+    case 97: {
+      previous();
+      break;
+    }
+    case 113: {
+      end();
+      break;
+    }
+    case 119: {
+      pause();
+    }
+    case 101: {
+      resume();
+    }
+    default: {}
+  }
 }
 
 void Session::handleTime() {
@@ -147,50 +180,56 @@ void Session::handleTime() {
   }
 }
 
-void Session::handleOutput() const {
+void Session::handleOutput() {
   if (!_running) {
-    std::cout << std::endl << std::endl << "end" << std::endl;  
     return;
   }
 
-  static std::string previous_title;
+  getmaxyx(stdscr, _row, _col);
+
+  clear();
+  move(0, 0);
+
   const std::string& current_title = _current_section->qualifiedName();
-  if (current_title != previous_title) {
-    std::cout << std::endl << std::endl << current_title << std::endl;
-    previous_title = current_title;
-  }
+  printw(_title.c_str());
+  printw("\n");
+  printw(current_title.c_str());
+  printw("\n");
 
   static int previous_progress;
+  const int PROGRESS_BAR_SIZE = _row - 17;
   const int current_progress = progress() * PROGRESS_BAR_SIZE;
   const int spaces = PROGRESS_BAR_SIZE - current_progress;
   const int remaining_seconds = (1.0f - progress()) * _current_section->seconds;
 
-  for (auto i = 0; i < PROGRESS_BAR_SIZE + 10; ++i) {
-    std::cout << " \b\b";
-  }
-
-  std::cout << "[";
+  printw("[");
+  attron(COLOR_PAIR(1));
   if (current_progress != previous_progress) {
     for (auto i = 0; i < current_progress; ++i) {
       if (i < PROGRESS_BAR_SIZE * 0.75) {
-        std::cout << "\x1B[32m|\033[0m";
+        //printw("\x1B[32m|\033[0m");
       } else if (i < PROGRESS_BAR_SIZE * 0.90) {
-        std::cout << "\x1B[33m|\033[0m";
+        //printw("\x1B[33m|\033[0m");
       } else {
-        std::cout << "\x1B[31m|\033[0m";
+        //printw("\x1B[31m|\033[0m");
       }
+      printw("|");
     }
     for (auto i = 0; i < spaces - 1; ++i) {
-      std::cout << " ";
+      printw(" ");
     }
   } else {
     for (auto i = 0; i < PROGRESS_BAR_SIZE - 1; ++i) {
-      std::cout << " ";
+      printw(" ");
     }
   }
-  std::cout << "] ";
+  attroff(COLOR_PAIR(1));
+  printw("] ");
 
-  std::cout << remaining_seconds / 60 << "m" << remaining_seconds % 60 << "s " << std::flush;
+  printw("%im%is ", remaining_seconds / 60, remaining_seconds % 60);
+
+  /* Print it on to the real screen */
+	refresh();
 }
 
 void Session::pause() {
@@ -208,14 +247,19 @@ void Session::resume() {
 }
 
 void Session::previous() {
-  --_current_section;
+  if (_current_section > _sections.begin()) {
+    --_current_section;
+  }
   _section_start = std::chrono::steady_clock::now();
   resume();
   _pause_duration = _pause_duration.zero();
 }
 
 void Session::next() {
-  ++_current_section;
+  if (_current_section < _sections.end()) {
+    ++_current_section;
+  }
+
   _section_start = std::chrono::steady_clock::now();
   resume();
   _pause_duration = _pause_duration.zero();

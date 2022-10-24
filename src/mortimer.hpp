@@ -7,7 +7,6 @@
 
 using indentation = int;
 constexpr int SLEEP_DURATION_MS = 8;
-constexpr int PROGRESS_BAR_SIZE = 100;
 
 class Session {
   public:
@@ -31,7 +30,7 @@ class Session {
       bool minus;
     };
 
-    void handleOutput() const;
+    void handleOutput();
     void handleKeys();
     void handleTime();
 
@@ -52,6 +51,10 @@ class Session {
     std::chrono::duration<int, std::milli>  _pause_duration;
     bool _paused;
     bool _running;
+
+    /* ncurses */
+    int _row;
+    int _col;
 
   public:
     friend std::ostream& operator<<(std::ostream&, const Session&);
