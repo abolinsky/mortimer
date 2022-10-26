@@ -1,8 +1,11 @@
 #include "mortimer.hpp"
 
+#include <curses.h>
+
+#include <algorithm>
 #include <fstream>
 #include <regex>
-#include <cstdlib>
+#include <cmath>
 #include <stack>
 #include <tuple>
 #include <thread>
@@ -104,21 +107,64 @@ Session::Session(const std::string& filename) : _pause_duration(0), _paused(fals
 }
 
 void Session::run() {
-  _running = true;
-  std::cout << std::endl << _title << std::endl;
+  setup();
   while (_running) {
     handleKeys();
     handleTime();
     handleOutput();
   }
+  cleanup();
+
+  for (auto &i : _sections) {
+    std::cout << i << std::endl;
+  }
+}
+
+void Session::setup() {
+  initscr();
+  curs_set(0);
+  keypad(stdscr, TRUE);
+  noecho();
+  raw();
+  timeout(0);
+  start_color();
+  init_pair(1, COLOR_GREEN, COLOR_BLACK);
+  init_pair(2, COLOR_YELLOW, COLOR_BLACK);
+  init_pair(3, COLOR_RED, COLOR_BLACK);
+  init_pair(4, COLOR_WHITE, COLOR_MAGENTA);
+  init_pair(5, COLOR_WHITE, COLOR_RED);
+
+  _running = true;
+}
+
+void Session::cleanup() {
+  endwin();
 }
 
 void Session::handleKeys() {
-  /* TODO: pause() */
-  /* TODO: resume() */
-  /* TODO: previous() */
-  /* TODO: next() */
-  /* TODO: end() */
+  int ch = getch();
+
+  switch (ch) {
+    case 100: {
+      next();
+      break;
+    }
+    case 97: {
+      previous();
+      break;
+    }
+    case 113: {
+      end();
+      break;
+    }
+    case 119: {
+      pause();
+    }
+    case 101: {
+      resume();
+    }
+    default: {}
+  }
 }
 
 void Session::handleTime() {
@@ -136,61 +182,63 @@ void Session::handleTime() {
   if (_section_start.time_since_epoch().count() == 0) {
     _section_start = std::chrono::steady_clock::now();
   }
-
-  if (progress() >= 1.0) {
-    next();
-  }
-
-  if (_current_section == _sections.end()) {
-    _running = false;
-    return;
-  }
 }
 
-void Session::handleOutput() const {
+void Session::handleOutput() {
   if (!_running) {
-    std::cout << std::endl << std::endl << "end" << std::endl;  
     return;
   }
 
-  static std::string previous_title;
-  const std::string& current_title = _current_section->qualifiedName();
-  if (current_title != previous_title) {
-    std::cout << std::endl << std::endl << current_title << std::endl;
-    previous_title = current_title;
-  }
+  clear();
+  move(0, 0);
 
-  static int previous_progress;
-  const int current_progress = progress() * PROGRESS_BAR_SIZE;
+  printw(_title.c_str());
+  printw("\n");
+  attron(COLOR_PAIR(4));
+  printw(_current_section->qualifiedName().c_str());
+  attroff(COLOR_PAIR(4));
+  printw("\n");
+
+  int row, col;
+  getmaxyx(stdscr, row, col);
+  const int PROGRESS_BAR_SIZE = col - 17;
+  const int current_progress = std::min(static_cast<int>(progress() * PROGRESS_BAR_SIZE), PROGRESS_BAR_SIZE);
   const int spaces = PROGRESS_BAR_SIZE - current_progress;
   const int remaining_seconds = (1.0f - progress()) * _current_section->seconds;
 
-  for (auto i = 0; i < PROGRESS_BAR_SIZE + 10; ++i) {
-    std::cout << " \b\b";
-  }
-
-  std::cout << "[";
-  if (current_progress != previous_progress) {
-    for (auto i = 0; i < current_progress; ++i) {
-      if (i < PROGRESS_BAR_SIZE * 0.75) {
-        std::cout << "\x1B[32m|\033[0m";
-      } else if (i < PROGRESS_BAR_SIZE * 0.90) {
-        std::cout << "\x1B[33m|\033[0m";
-      } else {
-        std::cout << "\x1B[31m|\033[0m";
-      }
-    }
-    for (auto i = 0; i < spaces - 1; ++i) {
-      std::cout << " ";
-    }
-  } else {
-    for (auto i = 0; i < PROGRESS_BAR_SIZE - 1; ++i) {
-      std::cout << " ";
+  printw("[");
+  for (auto i = 0; i < current_progress; ++i) {
+    if (i < PROGRESS_BAR_SIZE * 0.75) {
+      attron(COLOR_PAIR(1));
+      printw("|");
+      attroff(COLOR_PAIR(1));
+    } else if (i < PROGRESS_BAR_SIZE * 0.90) {
+      attron(COLOR_PAIR(2));
+      printw("|");
+      attroff(COLOR_PAIR(2));
+    } else {
+      attron(COLOR_PAIR(3));
+      printw("|");
+      attroff(COLOR_PAIR(3));
     }
   }
-  std::cout << "] ";
+  for (auto i = 0; i < spaces - 1; ++i) {
+    printw(" ");
+  }
+  printw("] ");
 
-  std::cout << remaining_seconds / 60 << "m" << remaining_seconds % 60 << "s " << std::flush;
+  if (remaining_seconds < 0) {
+    attron(COLOR_PAIR(5));
+  }
+  if (remaining_seconds < 0 && remaining_seconds > -60) {
+    printw("-");
+  }
+  printw("%im%is", remaining_seconds / 60, std::abs(remaining_seconds) % 60);
+  if (remaining_seconds < 0) {
+    attroff(COLOR_PAIR(5));
+  }
+
+  refresh();
 }
 
 void Session::pause() {
@@ -208,14 +256,21 @@ void Session::resume() {
 }
 
 void Session::previous() {
-  --_current_section;
+  if (_current_section > _sections.begin()) {
+    --_current_section;
+  }
   _section_start = std::chrono::steady_clock::now();
   resume();
   _pause_duration = _pause_duration.zero();
 }
 
 void Session::next() {
-  ++_current_section;
+  _current_section->actual_seconds = elapsed() / 1000;
+
+  if (_current_section < _sections.end()) {
+    ++_current_section;
+  }
+
   _section_start = std::chrono::steady_clock::now();
   resume();
   _pause_duration = _pause_duration.zero();
@@ -225,9 +280,13 @@ void Session::end() {
   _running = false;
 }
 
+int Session::elapsed() const {
+  const auto ms_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _section_start - _pause_duration).count();
+  return ms_elapsed;
+}
+
 float Session::progress() const {
-  const auto milliseconds_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _section_start - _pause_duration).count();
-  return milliseconds_elapsed / static_cast<float>(_current_section->seconds * 1000);
+  return elapsed() / static_cast<float>(_current_section->seconds * 1000);
 }
 
 Session::Section::Section() : seconds(0), plus(true), minus(true) {}
@@ -252,6 +311,9 @@ std::ostream& operator<<(std::ostream& os, const Session::Section& section) {
   }
 
   os << "(" << section.seconds << "s)" << std::endl;
+  os << "-> actual seconds (" << section.actual_seconds << "s)" << std::endl;
+  os << "-> recommended seconds (" << section.recommended_seconds << "s)" << std::endl;
+  os << "-> weight(" << section.weight << ")" << std::endl;
 
   return os;
 }

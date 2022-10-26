@@ -7,7 +7,6 @@
 
 using indentation = int;
 constexpr int SLEEP_DURATION_MS = 8;
-constexpr int PROGRESS_BAR_SIZE = 100;
 
 class Session {
   public:
@@ -31,9 +30,12 @@ class Session {
       bool minus;
     };
 
-    void handleOutput() const;
+    void setup();
+    void cleanup();
+
     void handleKeys();
     void handleTime();
+    void handleOutput();
 
     void pause();
     void resume();
@@ -41,6 +43,9 @@ class Session {
     void next();
     void end();
 
+    void redistribute();
+
+    int elapsed() const;
     float progress() const;
 
     std::string _title;
