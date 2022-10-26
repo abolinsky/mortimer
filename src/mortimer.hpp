@@ -30,9 +30,12 @@ class Session {
       bool minus;
     };
 
-    void handleOutput();
+    void setup();
+    void cleanup();
+
     void handleKeys();
     void handleTime();
+    void handleOutput();
 
     void pause();
     void resume();
@@ -40,6 +43,9 @@ class Session {
     void next();
     void end();
 
+    void redistribute();
+
+    int elapsed() const;
     float progress() const;
 
     std::string _title;
@@ -51,10 +57,6 @@ class Session {
     std::chrono::duration<int, std::milli>  _pause_duration;
     bool _paused;
     bool _running;
-
-    /* ncurses */
-    int _row;
-    int _col;
 
   public:
     friend std::ostream& operator<<(std::ostream&, const Session&);
