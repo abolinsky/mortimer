@@ -222,7 +222,7 @@ void Session::handleOutput() {
       attroff(COLOR_PAIR(3));
     }
   }
-  for (auto i = 0; i < spaces - 1; ++i) {
+  for (auto i = 0; i < spaces; ++i) {
     printw(" ");
   }
   printw("] ");
